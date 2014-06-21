@@ -1,19 +1,44 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"text/template"
 )
 
 type GotexServer struct {
 }
 
 func (s GotexServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	body, _ := ioutil.ReadAll(r.Body)
+
+	var model interface{}
+	err := json.Unmarshal(body, &model)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotAcceptable)
+		return
+	}
+
+	log.Printf("Received model %q", model)
+
+	var t *template.Template
+	t, err = template.ParseFiles("invoice.tmpl")
+	if err != nil {
+		panic(err)
+	}
+
+	err = t.Execute(w, model)
+	if err != nil {
+		panic(err)
+	}
 
 }
 
@@ -52,7 +77,7 @@ func run() int {
 		}
 	*/
 
-	http.Handle("/", GotexServer{})
+	http.Handle("/", http.StripPrefix("/", GotexServer{}))
 
 	server := &http.Server{Addr: config.Addr}
 	listener, err := net.Listen("tcp", server.Addr)
@@ -75,7 +100,6 @@ func run() int {
 	<-killChannel
 	log.Println("Exiting")
 	listener.Close()
-	// TODO: terminate handleNotifications()
 
 	return 0
 }
